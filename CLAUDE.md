@@ -73,6 +73,19 @@ User Input → main.py (REPL)
 - LLM calls are monkeypatched — no running server needed.
 - Test files mirror source modules: `test_file_tools.py` ↔ `tools/file_*.py`, etc.
 
+## Documentation Maintenance
+
+**Keep `README.md` and `harness_docs.md` in sync with every code change.** This is a hard requirement, not optional cleanup:
+
+- **New tool** → add a row to the Built-in Tools table in both files.
+- **New skill** → add a row to the Built-in Skills / Skills table in both files.
+- **New command** → add a row to the Commands Reference / Commands table in both files.
+- **Modified feature** (renamed, changed behaviour, removed flag, new flag) → update every mention in both files.
+- **Deleted tool / skill / command** → remove its row from both files.
+- **Config constant changed** → update the Configuration / Key config table in both files.
+
+`harness_docs.md` is the condensed reference the model reads at runtime via the `read_harness_docs` tool — stale entries there actively mislead the model during a session.
+
 ## Design Invariants
 
 Non-obvious rules that will trip you up if you don't know them:
