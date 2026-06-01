@@ -36,6 +36,7 @@ Entry point: `main.py`. Core loop: `agent.py`. Config: `config.py`.
 | grep | Regex search across workspace files; returns file:line: matches. |
 | glob | Find files by glob pattern (e.g. **/*.py); returns matching paths. |
 | read_file_lines | Read a specific line range from a file with line-number prefixes. |
+| read_harness_docs | Return the harness reference document (harness_docs.md). no_truncate; auto-called by the model when asked about the harness. |
 
 Protected from writing: main.py, agent.py, config.py, session.py, __init__.py files,
 .env files, requirements.txt, sessions/ dir, .git/ dir.
@@ -83,6 +84,7 @@ Protected from writing: main.py, agent.py, config.py, session.py, __init__.py fi
 | business_analyst | Decompose an idea into subject, objectives, constraints, and unknowns via subagent |
 | svg_artist | Generate an SVG file from a natural language description via subagent |
 | fetch_url | Fetch a URL via skill (wraps the fetch_url tool) |
+| translate_fr | Translate a given text (or the last user message) into French |
 
 ## Architecture
 

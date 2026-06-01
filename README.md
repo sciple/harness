@@ -117,7 +117,7 @@ python main.py [OPTIONS]
 
 | Option | Default | Description |
 |---|---|---|
-| `--model NAME` | `google/gemma-4-e4b` | Model name to request from the server |
+| `--model NAME` | `granite-4.1-8b` | Model name to request from the server |
 | `--base-url URL` | `http://127.0.0.1:1234/v1/` | API base URL |
 | `--system PROMPT` | *(built-in)* | Override the default system prompt |
 | `--quiet` | off | Suppress verbose tool-call output |
@@ -217,7 +217,7 @@ All tuneable parameters live in `config.py`. Key settings:
 | Setting | Default | Purpose |
 |---|---|---|
 | `LOCAL_API_BASE` | `http://127.0.0.1:1234/v1/` | LLM server endpoint |
-| `DEFAULT_MODEL` | `google/gemma-4-e4b` | Model name |
+| `DEFAULT_MODEL` | `granite-4.1-8b` | Model name |
 | `SYSTEM_PROMPT` | *(built-in)* | Default system prompt — includes OS hint, workspace path, and ASCII-only file writing rule |
 | `MAX_TOOL_ROUNDS` | `10` | Max consecutive tool-call rounds per turn |
 | `DEFAULT_GEN_PARAMS` | `{"max_tokens": 32768}` | Generation parameters sent with every request (overrides server-side defaults) |
@@ -300,6 +300,7 @@ Tools are functions the LLM can call autonomously during a conversation. They ar
 | `grep` | No | Search file contents by regex pattern within the workspace; returns matching lines with file path and line number |
 | `glob` | No | Find files by glob pattern (e.g. `*.py`, `**/*.yaml`); returns matching paths relative to the workspace root |
 | `read_file_lines` | No | Read a specific line range from a file (1-indexed, end inclusive); prefixes each line with its number — pairs naturally with `grep` hits |
+| `read_harness_docs` | No | Return the harness reference document (`harness_docs.md`); the model calls this automatically when asked about harness behaviour, commands, or configuration (`no_truncate`) |
 
 ### Tool Schema Flags
 
@@ -375,6 +376,7 @@ Skills that need a focused, tool-capable LLM instance should use `agent.run_suba
 | `svg_artist` | Generate a complete SVG file from a natural language description via a subagent; offers to open the result in a browser |
 | `fetch_url` | Fetch and display the plain-text content of a URL |
 | `distill` | Rebuild context as a goal-anchored structured block — user reviews and approves before anything changes (see [Context Distillation](#context-distillation)) |
+| `translate_fr` | Translate a given text (or the last user message) into French |
 
 ### Adding a Skill
 
