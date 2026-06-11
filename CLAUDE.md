@@ -59,13 +59,13 @@ User Input → main.py (REPL)
 - `config.py` defines `WORKSPACE_ROOT` and `PROTECTED_PATHS` — file tools are confined to workspace; harness infrastructure files cannot be modified by the agent.
 - Python tool executes in a sandboxed subprocess.
 - Destructive tool operations require confirmation.
-- Output is truncated by default; full output retrievable with `/last`.
+- Output is truncated by default; full output retrievable with the `get_tool_output` tool.
 
 ## Session & Context
 
 - Sessions persist as JSONL in `data/sessions/` (gitignored).
 - Context auto-compresses when token usage exceeds threshold (default 80% of model context window).
-- `/drop <n>`, `/drop <n>-<m>`, or `/drop <a>,<b>,<c>` prune individual turns; prints updated history after removal. `/compact` summarises and replaces history.
+- `/drop <n>`, `/drop <n>-<m>`, or `/drop <a>,<b>,<c>` prune individual turns; prints updated history after removal. `/compress` manually triggers context compression.
 
 ## Testing Conventions
 

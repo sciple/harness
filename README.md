@@ -266,11 +266,14 @@ harness/
     business_analyst.py      # Decompose an idea into structured components via subagent
     svg_artist.py            # Generate SVG files from natural language via subagent
     fetch_url.py             # Fetch and display a URL (skill wrapper)
-  sessions/                  # Auto-saved session files (JSONL)
-  notes/
-    notes.json               # Persistent notes store (auto-created)
-  events/                    # Default output directory for .ics files (auto-created)
-  svg/                       # Default output directory for generated SVG files (auto-created)
+    translate_fr.py          # Translate text or the last user message into French
+  data/
+    sessions/                # Auto-saved session files (JSONL, gitignored)
+    notes/
+      notes.json             # Persistent notes store (auto-created, gitignored)
+  workspace/                 # Agent file workspace (gitignored)
+    events/                  # Default output for .ics calendar files (auto-created)
+    svg/                     # Default output for generated SVG files (auto-created)
 ```
 
 ---
@@ -442,7 +445,7 @@ Use subagents for self-contained tasks where you want full tool access but don't
 
 ## Session Management
 
-Sessions are automatically saved after every turn as JSONL files in the `sessions/` directory.
+Sessions are automatically saved after every turn as JSONL files in the `data/sessions/` directory.
 
 - **Auto-save**: enabled by default (`SESSION_AUTOSAVE = True` in config)
 - **Session IDs**: UTC timestamp-based (e.g. `20260410T143022`)
@@ -580,7 +583,7 @@ Three tiers of protection prevent tools from modifying harness infrastructure:
 
 1. **Specific files**: `main.py`, `agent.py`, `config.py`, `session.py`, and all `__init__.py` files in `commands/`, `tools/`, `skills/`
 2. **Filename patterns**: any `__init__.py`, `.env`, `*.env`, `requirements.txt`, `pyproject.toml`, `setup.py`, `setup.cfg`
-3. **Protected directories**: `.git/`, `sessions/`, `__pycache__/` — all contents are off-limits
+3. **Protected directories**: `.git/`, `data/`, `__pycache__/` — all contents are off-limits
 
 ### Workspace Confinement
 
@@ -633,7 +636,7 @@ main.py (REPL loop, prompt_toolkit UI)
         final assistant message
             |
             v
-        session.save()  -->  sessions/<id>.jsonl
+        session.save()  -->  data/sessions/<id>.jsonl
 ```
 
 The agent loop (`agent.py`) handles the core cycle:

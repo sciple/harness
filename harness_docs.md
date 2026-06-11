@@ -95,6 +95,5 @@ Protected from writing: main.py, agent.py, config.py, session.py, __init__.py fi
 - `commands/__init__.py` — all slash commands
 - `tools/__init__.py` — tool registry, dispatch, truncation, protection checks
 - `tools/*.py` — one file per tool, each calls `tools.register()` at import
-- `skills/__init__.py` — skill registry and runner
-- `skills/*.py` — one file per skill
+- `skills/*.py` — one file per skill; loaded dynamically by `commands/__init__.py` on `/skill` invocation
 - `ui.py` — prompt_toolkit REPL input, toolbar, syntax highlight
