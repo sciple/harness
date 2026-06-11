@@ -10,15 +10,15 @@ LOCAL_API_BASE = "http://127.0.0.1:1234/v1/"
 DUMMY_API_KEY = "lmstudio-dummy-key"
 
 # Default model name — override at runtime with /model <name>
-# DEFAULT_MODEL = "google/gemma-4-e4b"
-# DEFAULT_MODEL =  "mistralai/ministral-3-3b"
-# DEFAULT_MODEL = "ibm/granite-4-h-tiny"
-# DEFAULT_MODEL = "nvidia/nemotron-3-nano-4b"
 DEFAULT_MODEL = "granite-4.1-8b"
 
 # Models available for selection via /model (edit this list freely)
 AVAILABLE_MODELS: list[str] = [
     "granite-4.1-8b",
+    "nvidia/nemotron-3-nano-4b",
+    "ibm/granite-4-h-tiny",
+    "google/gemma-4-e4b",
+    "mistralai/ministral-3-3b"
 ]
 # DEFAULT_MODEL = "apertus-8b-instruct-2509"
 

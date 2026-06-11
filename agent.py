@@ -106,32 +106,78 @@ def get_context_length(client: OpenAI, model: str) -> int | None:
     return None
 
 
+def _lm_base(client) -> str:
+    """Strip /v1 suffix to get the LM Studio app-API base URL."""
+    return str(client.base_url).rstrip("/").removesuffix("/v1")
+
+
+def _body_confirms_success(r) -> bool:
+    """Return True if the response body looks like a real success (not a catch-all 200)."""
+    try:
+        body = r.json()
+        return bool(body.get("model") or body.get("id") or body.get("success"))
+    except Exception:
+        return False
+
+
 def load_model(client, model_id: str) -> tuple[bool, str]:
-    """Ask the LM Studio backend to load model_id. Returns (ok, msg).
+    """Ask the backend to load model_id. Returns (ok, msg).
 
     LM Studio returns HTTP 200 for unknown endpoints with an empty body, so we
     validate the response body rather than trusting the status code alone.
-    A real success response contains a 'model' object.
     """
     import httpx
-    base = str(client.base_url).rstrip("/").removesuffix("/v1")
     headers = {"Authorization": f"Bearer {client.api_key}",
                "Content-Type": "application/json"}
     try:
-        r = httpx.post(f"{base}/api/v0/models/load",
+        r = httpx.post(f"{_lm_base(client)}/api/v0/models/load",
                        json={"identifier": model_id},
                        headers=headers, timeout=120)
         if r.status_code != 200:
             return False, f"HTTP {r.status_code}"
-        try:
-            body = r.json()
-        except Exception:
-            body = {}
-        if body.get("model") or body.get("id") or body.get("success"):
+        if _body_confirms_success(r):
             return True, "loaded"
         return False, "endpoint not supported by this backend version"
     except Exception as e:
         return False, str(e)
+
+
+def unload_model(client, model_id: str) -> tuple[bool, str]:
+    """Ask the backend to unload model_id. Returns (ok, msg).
+
+    Tries the LM Studio native endpoint first (with body validation), then
+    falls back to a keep_alive=0 chat-completions request — the mechanism
+    used by Ollama and honoured by some LM Studio versions.
+    """
+    import httpx
+    auth = {"Authorization": f"Bearer {client.api_key}"}
+    json_headers = {**auth, "Content-Type": "application/json"}
+
+    # 1. LM Studio native API
+    try:
+        r = httpx.post(f"{_lm_base(client)}/api/v0/models/unload",
+                       json={"identifier": model_id},
+                       headers=json_headers, timeout=30)
+        if r.status_code == 200 and _body_confirms_success(r):
+            return True, "unloaded"
+    except Exception:
+        pass
+
+    # 2. keep_alive=0 via chat completions (Ollama-style, may work with LM Studio)
+    try:
+        base = str(client.base_url).rstrip("/")
+        r = httpx.post(f"{base}/chat/completions",
+                       json={"model": model_id,
+                             "messages": [{"role": "user", "content": " "}],
+                             "max_tokens": 1,
+                             "keep_alive": 0},
+                       headers=json_headers, timeout=60)
+        if r.status_code == 200:
+            return True, "unloaded via keep_alive=0"
+    except Exception as e:
+        return False, str(e)
+
+    return False, "not supported by this backend"
 
 
 def _stream_response(

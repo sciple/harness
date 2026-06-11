@@ -132,13 +132,19 @@ def _cmd_model(args: str, state: dict) -> str:
         if new_model == current:
             return f"Already using {current}."
 
-    # --- Load new model on backend (best-effort with spinner) ---
-    # Explicit unload is skipped: LM Studio auto-unloads when a new model loads.
+    # --- Unload previous model, then load new one (both best-effort with spinner) ---
+    stop = threading.Event()
+    t = threading.Thread(target=_spinner,
+                         args=(f"Unloading {current}...", stop), daemon=True)
+    t.start()
+    unloaded, umsg = agent_mod.unload_model(state["client"], current)
+    stop.set(); t.join()
+
     stop = threading.Event()
     t = threading.Thread(target=_spinner,
                          args=(f"Loading {new_model}...", stop), daemon=True)
     t.start()
-    loaded, msg = agent_mod.load_model(state["client"], new_model)
+    loaded, lmsg = agent_mod.load_model(state["client"], new_model)
     stop.set(); t.join()
 
     state["model"] = new_model
@@ -146,11 +152,16 @@ def _cmd_model(args: str, state: dict) -> str:
     import ui as ui_mod
     ui_mod.toolbar_state["model"] = new_model
 
-    if loaded:
-        return f"Model loaded and switched to: {new_model}"
-    return (f"Model switched to: {new_model}\n"
-            f"  (explicit load not supported by this backend — "
-            f"model will be loaded automatically on next chat request)")
+    notes = []
+    if not unloaded:
+        notes.append(f"could not unload {current} — unload it manually in LM Studio ({umsg})")
+    if not loaded:
+        notes.append(f"explicit load not supported — {new_model} loads on next chat request ({lmsg})")
+
+    result = f"Model switched to: {new_model}"
+    if notes:
+        result += "\n  \033[2m(" + "; ".join(notes) + ")\033[0m"
+    return result
 
 
 def _cmd_tools(args: str, state: dict) -> str:
