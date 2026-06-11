@@ -107,7 +107,12 @@ def get_context_length(client: OpenAI, model: str) -> int | None:
 
 
 def load_model(client, model_id: str) -> tuple[bool, str]:
-    """Ask the LM Studio backend to load model_id. Best-effort — returns (ok, msg)."""
+    """Ask the LM Studio backend to load model_id. Returns (ok, msg).
+
+    LM Studio returns HTTP 200 for unknown endpoints with an empty body, so we
+    validate the response body rather than trusting the status code alone.
+    A real success response contains a 'model' object.
+    """
     import httpx
     base = str(client.base_url).rstrip("/").removesuffix("/v1")
     headers = {"Authorization": f"Bearer {client.api_key}",
@@ -116,26 +121,15 @@ def load_model(client, model_id: str) -> tuple[bool, str]:
         r = httpx.post(f"{base}/api/v0/models/load",
                        json={"identifier": model_id},
                        headers=headers, timeout=120)
-        if r.status_code == 200:
+        if r.status_code != 200:
+            return False, f"HTTP {r.status_code}"
+        try:
+            body = r.json()
+        except Exception:
+            body = {}
+        if body.get("model") or body.get("id") or body.get("success"):
             return True, "loaded"
-        return False, f"HTTP {r.status_code}"
-    except Exception as e:
-        return False, str(e)
-
-
-def unload_model(client, model_id: str) -> tuple[bool, str]:
-    """Ask the LM Studio backend to unload model_id. Best-effort — returns (ok, msg)."""
-    import httpx
-    base = str(client.base_url).rstrip("/").removesuffix("/v1")
-    headers = {"Authorization": f"Bearer {client.api_key}",
-               "Content-Type": "application/json"}
-    try:
-        r = httpx.post(f"{base}/api/v0/models/unload",
-                       json={"identifier": model_id},
-                       headers=headers, timeout=30)
-        if r.status_code == 200:
-            return True, "unloaded"
-        return False, f"HTTP {r.status_code}"
+        return False, "endpoint not supported by this backend version"
     except Exception as e:
         return False, str(e)
 

@@ -115,8 +115,7 @@ class TestModel:
 
     def _mock_agent(self, monkeypatch):
         import agent as agent_mod
-        monkeypatch.setattr(agent_mod, "load_model",   lambda c, m: (False, "not supported"))
-        monkeypatch.setattr(agent_mod, "unload_model", lambda c, m: (False, "not supported"))
+        monkeypatch.setattr(agent_mod, "load_model", lambda c, m: (False, "not supported"))
 
     # --- no-args: interactive list ---
 

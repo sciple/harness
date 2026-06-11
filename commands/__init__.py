@@ -132,30 +132,25 @@ def _cmd_model(args: str, state: dict) -> str:
         if new_model == current:
             return f"Already using {current}."
 
-    # --- Unload current, then load new (both best-effort with spinner) ---
-    stop = threading.Event()
-    t = threading.Thread(target=_spinner,
-                         args=(f"Unloading {current}...", stop), daemon=True)
-    t.start()
-    ok, msg = agent_mod.unload_model(state["client"], current)
-    stop.set(); t.join()
-    if not ok:
-        print(f"  (unload: {msg})")
-
+    # --- Load new model on backend (best-effort with spinner) ---
+    # Explicit unload is skipped: LM Studio auto-unloads when a new model loads.
     stop = threading.Event()
     t = threading.Thread(target=_spinner,
                          args=(f"Loading {new_model}...", stop), daemon=True)
     t.start()
-    ok, msg = agent_mod.load_model(state["client"], new_model)
+    loaded, msg = agent_mod.load_model(state["client"], new_model)
     stop.set(); t.join()
-    if not ok:
-        print(f"  (load: {msg})")
 
     state["model"] = new_model
     state["context_length"] = None
     import ui as ui_mod
     ui_mod.toolbar_state["model"] = new_model
-    return f"Model switched to: {new_model}"
+
+    if loaded:
+        return f"Model loaded and switched to: {new_model}"
+    return (f"Model switched to: {new_model}\n"
+            f"  (explicit load not supported by this backend — "
+            f"model will be loaded automatically on next chat request)")
 
 
 def _cmd_tools(args: str, state: dict) -> str:
