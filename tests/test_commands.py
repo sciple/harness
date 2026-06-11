@@ -113,21 +113,76 @@ class TestModel:
         fake_ui.toolbar_state = {}
         monkeypatch.setitem(sys.modules, "ui", fake_ui)
 
-    def test_show_current_model(self, state):
+    def _mock_agent(self, monkeypatch):
+        import agent as agent_mod
+        monkeypatch.setattr(agent_mod, "load_model",   lambda c, m: (False, "not supported"))
+        monkeypatch.setattr(agent_mod, "unload_model", lambda c, m: (False, "not supported"))
+
+    # --- no-args: interactive list ---
+
+    def test_list_shows_models(self, state, monkeypatch, capsys):
+        import commands as cmd_mod
+        monkeypatch.setattr(cmd_mod, "AVAILABLE_MODELS", ["model-a", "model-b"])
+        monkeypatch.setitem(sys.modules, "ui", MagicMock(toolbar_state={}))
+        monkeypatch.setattr("builtins.input", lambda _: "")  # cancel
+        result = _dispatch("/model", state)
+        out = capsys.readouterr().out
+        assert "model-a" in out
+        assert "model-b" in out
+        assert "Cancelled" in result
+
+    def test_list_empty_shows_current(self, state, monkeypatch):
+        import commands as cmd_mod
         state["model"] = "my-model"
+        monkeypatch.setattr(cmd_mod, "AVAILABLE_MODELS", [])
         result = _dispatch("/model", state)
         assert "my-model" in result
 
+    def test_list_pick_switches_model(self, state, monkeypatch):
+        import commands as cmd_mod
+        monkeypatch.setattr(cmd_mod, "AVAILABLE_MODELS", ["model-a", "model-b"])
+        self._mock_ui(monkeypatch)
+        self._mock_agent(monkeypatch)
+        monkeypatch.setattr("builtins.input", lambda _: "2")  # pick model-b
+        _dispatch("/model", state)
+        assert state["model"] == "model-b"
+
+    def test_list_pick_same_model_no_op(self, state, monkeypatch):
+        import commands as cmd_mod
+        state["model"] = "model-a"
+        monkeypatch.setattr(cmd_mod, "AVAILABLE_MODELS", ["model-a", "model-b"])
+        monkeypatch.setitem(sys.modules, "ui", MagicMock(toolbar_state={}))
+        monkeypatch.setattr("builtins.input", lambda _: "1")  # pick model-a (current)
+        result = _dispatch("/model", state)
+        assert "Already using" in result
+
+    def test_list_invalid_choice(self, state, monkeypatch):
+        import commands as cmd_mod
+        monkeypatch.setattr(cmd_mod, "AVAILABLE_MODELS", ["model-a"])
+        monkeypatch.setitem(sys.modules, "ui", MagicMock(toolbar_state={}))
+        monkeypatch.setattr("builtins.input", lambda _: "99")
+        result = _dispatch("/model", state)
+        assert "Invalid" in result
+
+    # --- with-args: direct switch ---
+
     def test_set_model(self, state, monkeypatch):
         self._mock_ui(monkeypatch)
+        self._mock_agent(monkeypatch)
         _dispatch("/model new-model-name", state)
         assert state["model"] == "new-model-name"
 
     def test_set_model_resets_context_length(self, state, monkeypatch):
         self._mock_ui(monkeypatch)
+        self._mock_agent(monkeypatch)
         state["context_length"] = 8192
         _dispatch("/model another-model", state)
         assert state["context_length"] is None
+
+    def test_set_same_model_no_op(self, state, monkeypatch):
+        state["model"] = "test-model"
+        result = _dispatch("/model test-model", state)
+        assert "Already using" in result
 
 
 # ---------------------------------------------------------------------------

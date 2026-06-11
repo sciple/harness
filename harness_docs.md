@@ -9,6 +9,7 @@ Entry point: `main.py`. Core loop: `agent.py`. Config: `config.py`.
 |---|---|---|
 | LOCAL_API_BASE | http://127.0.0.1:1234/v1/ | LLM endpoint |
 | DEFAULT_MODEL | granite-4.1-8b | Active model |
+| AVAILABLE_MODELS | ["granite-4.1-8b"] | Models listed by /model for interactive selection |
 | DEFAULT_GEN_PARAMS | max_tokens: 32768 | Sent with every request |
 | MAX_TOOL_ROUNDS | 10 | Max consecutive tool calls before forced answer |
 | WORKSPACE_ROOT | process cwd at startup | Root for all file operations |
@@ -46,7 +47,7 @@ Protected from writing: main.py, agent.py, config.py, session.py, __init__.py fi
 | Command | Purpose |
 |---|---|
 | /help | List all commands |
-| /model [name] | Show or switch model |
+| /model [name] | No args: numbered list from AVAILABLE_MODELS in config.py, pick to load; with name: switch directly. Unloads current + loads new on backend (best-effort). |
 | /set param value | Set generation param (temperature, top_p, max_tokens, seed) |
 | /unset param | Remove a generation param override |
 | /params | Show active overrides |

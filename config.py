@@ -16,6 +16,12 @@ DUMMY_API_KEY = "lmstudio-dummy-key"
 # DEFAULT_MODEL = "nvidia/nemotron-3-nano-4b"
 DEFAULT_MODEL = "granite-4.1-8b"
 
+# Models available for selection via /model (edit this list freely)
+AVAILABLE_MODELS: list[str] = [
+    "granite-4.1-8b",
+]
+# DEFAULT_MODEL = "apertus-8b-instruct-2509"
+
 # Root directory that write_file (and similar tools) must stay inside.
 WORKSPACE_ROOT: str = os.path.join(_HARNESS_ROOT, "workspace")
 

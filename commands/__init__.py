@@ -21,7 +21,7 @@ import unicodedata
 
 import tools as tool_registry
 import session as session_mod
-from config import ALLOWED_GEN_PARAMS, SKILLS_DIR
+from config import ALLOWED_GEN_PARAMS, AVAILABLE_MODELS, SKILLS_DIR
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -95,13 +95,67 @@ def _cmd_reset(args: str, state: dict) -> str:
 
 
 def _cmd_model(args: str, state: dict) -> str:
+    import agent as agent_mod
+
+    current = state["model"]
+
+    # --- No args: show numbered list and let user pick ---
     if not args.strip():
-        return f"Current model: {state['model']}"
-    state["model"] = args.strip()
-    state["context_length"] = None  # invalidate cached context length
+        if not AVAILABLE_MODELS:
+            return f"Current model: {current}\n(AVAILABLE_MODELS list in config.py is empty.)"
+
+        lines = ["Available models (* = active):"]
+        for i, name in enumerate(AVAILABLE_MODELS, 1):
+            marker = " *" if name == current else ""
+            lines.append(f"  [{i}] {name}{marker}")
+        print("\n".join(lines))
+
+        try:
+            choice = input("\n  Select model number (or Enter to cancel): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return "Cancelled."
+
+        if not choice:
+            return "Cancelled."
+        try:
+            idx = int(choice) - 1
+            if not (0 <= idx < len(AVAILABLE_MODELS)):
+                raise ValueError
+        except ValueError:
+            return f"Invalid choice: '{choice}'"
+
+        new_model = AVAILABLE_MODELS[idx]
+        if new_model == current:
+            return f"Already using {current}."
+    else:
+        new_model = args.strip()
+        if new_model == current:
+            return f"Already using {current}."
+
+    # --- Unload current, then load new (both best-effort with spinner) ---
+    stop = threading.Event()
+    t = threading.Thread(target=_spinner,
+                         args=(f"Unloading {current}...", stop), daemon=True)
+    t.start()
+    ok, msg = agent_mod.unload_model(state["client"], current)
+    stop.set(); t.join()
+    if not ok:
+        print(f"  (unload: {msg})")
+
+    stop = threading.Event()
+    t = threading.Thread(target=_spinner,
+                         args=(f"Loading {new_model}...", stop), daemon=True)
+    t.start()
+    ok, msg = agent_mod.load_model(state["client"], new_model)
+    stop.set(); t.join()
+    if not ok:
+        print(f"  (load: {msg})")
+
+    state["model"] = new_model
+    state["context_length"] = None
     import ui as ui_mod
-    ui_mod.toolbar_state["model"] = state["model"]
-    return f"Model switched to: {state['model']}"
+    ui_mod.toolbar_state["model"] = new_model
+    return f"Model switched to: {new_model}"
 
 
 def _cmd_tools(args: str, state: dict) -> str:

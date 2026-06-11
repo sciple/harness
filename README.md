@@ -153,7 +153,7 @@ All commands start with `/` and are entered at the `You:` prompt. Tab completion
 
 | Command | Description |
 |---|---|
-| `/model [name]` | Show or change the active model |
+| `/model [name]` | No args: show numbered list from `AVAILABLE_MODELS` in `config.py` and prompt to pick; with a name: switch directly. Both paths unload the current model and load the new one on the backend (best-effort). |
 | `/set [param] [value]` | Set a generation parameter, or show current params if called with no arguments |
 | `/params` | Show active generation parameter overrides |
 | `/unset <param>` | Remove a generation parameter override |
@@ -218,6 +218,7 @@ All tuneable parameters live in `config.py`. Key settings:
 |---|---|---|
 | `LOCAL_API_BASE` | `http://127.0.0.1:1234/v1/` | LLM server endpoint |
 | `DEFAULT_MODEL` | `granite-4.1-8b` | Model name |
+| `AVAILABLE_MODELS` | `["granite-4.1-8b"]` | List of models shown by `/model` for interactive selection |
 | `SYSTEM_PROMPT` | *(built-in)* | Default system prompt — includes OS hint, workspace path, and ASCII-only file writing rule |
 | `MAX_TOOL_ROUNDS` | `10` | Max consecutive tool-call rounds per turn |
 | `DEFAULT_GEN_PARAMS` | `{"max_tokens": 32768}` | Generation parameters sent with every request (overrides server-side defaults) |
