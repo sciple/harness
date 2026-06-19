@@ -10,7 +10,7 @@ LOCAL_API_BASE = "http://127.0.0.1:1234/v1/"
 DUMMY_API_KEY = "lmstudio-dummy-key"
 
 # Default model name — override at runtime with /model <name>
-DEFAULT_MODEL = "granite-4.1-8b"
+DEFAULT_MODEL = ""
 
 # Models available for selection via /model (edit this list freely)
 AVAILABLE_MODELS: list[str] = [
