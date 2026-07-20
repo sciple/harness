@@ -23,6 +23,7 @@ An interactive agent framework and REPL for local LLMs via any OpenAI-compatible
   - [Adding a Skill](#adding-a-skill)
   - [Generating a Skill at Runtime](#generating-a-skill-at-runtime)
 - [Subagents](#subagents)
+- [Experiments](#experiments)
 - [Session Management](#session-management)
 - [Context Management](#context-management)
   - [Context Pollution](#context-pollution)
@@ -198,6 +199,12 @@ Supported parameters: `temperature` (float), `top_p` (float), `max_tokens` (int)
 | Command | Description |
 |---|---|
 | `/subagent <task>` | Spawn an isolated LLM instance for a focused task |
+
+### Experiments
+
+| Command | Description |
+|---|---|
+| `/experiment [prompt]` | Run a prompt across a sweep of temperature values (with a configurable repeat count per value), resetting conversation history between every trial, then save a JSONL log and a Markdown report to `workspace/experiments/<timestamp>/` |
 
 ### Utilities
 
@@ -441,6 +448,24 @@ The harness validates the generated code for `SKILL_META` and a `run()` function
 Skills can also spawn subagents internally (e.g. `business_analyst`, `svg_artist`) with a custom system prompt tailored to a specific role.
 
 Use subagents for self-contained tasks where you want full tool access but don't want the intermediate steps polluting your conversation context.
+
+---
+
+## Experiments
+
+`/experiment [prompt]` runs a single prompt across a sweep of temperature values so you can compare how the model responds at different settings.
+
+- Prompts interactively for the prompt text (if not supplied as arguments), a comma-separated list of temperature values, and how many times to repeat each value
+- Every trial is a **brand-new, isolated conversation** — the system prompt plus a single user turn — so results are never influenced by a previous trial; your main conversation history is untouched
+- Any other generation parameters currently set via `/set` (`top_p`, `max_tokens`, `seed`) stay fixed across all trials and are recorded for reproducibility
+- Each trial logs: temperature, repeat number, model, prompt/completion/total tokens, elapsed time, tokens/sec, and the full response text
+- Results are written incrementally to `results.jsonl` (survives an interrupted run) and summarised into `report.md`, both saved under `workspace/experiments/<UTC timestamp>/`
+
+```
+/experiment Write a haiku about autumn
+Temperature values (comma-separated, e.g. 0.2,0.5,0.8,1.0): 0.2,0.6,1.0
+Repeats per temperature [1]: 3
+```
 
 ---
 

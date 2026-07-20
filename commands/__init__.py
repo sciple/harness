@@ -1257,6 +1257,212 @@ def _cmd_subagent(args: str, state: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# /experiment — sweep temperature values over a fixed prompt, log + report
+# ---------------------------------------------------------------------------
+
+def _build_experiment_report(
+    prompt: str,
+    model: str,
+    temperatures: list,
+    repeats: int,
+    base_params: dict,
+    results: list,
+) -> str:
+    from datetime import datetime, timezone
+
+    lines = ["# Experiment Report", ""]
+    lines.append(f"- Model: {model}")
+    lines.append(f"- Generated: {datetime.now(timezone.utc).isoformat()}")
+    lines.append(f"- Temperature values: {', '.join(str(t) for t in temperatures)}")
+    lines.append(f"- Repeats per value: {repeats}")
+    if base_params:
+        fixed = ", ".join(f"{k}={v}" for k, v in base_params.items())
+        lines.append(f"- Fixed generation params: {fixed}")
+    lines.append("")
+    lines.append("## Prompt")
+    lines.append("")
+    lines.append("```")
+    lines.append(prompt)
+    lines.append("```")
+    lines.append("")
+    lines.append("## Results Summary")
+    lines.append("")
+    lines.append("| Trial | Temp | Repeat | Prompt tok | Completion tok | Elapsed (s) | Tok/s |")
+    lines.append("|---|---|---|---|---|---|---|")
+    for r in results:
+        lines.append(
+            f"| {r['trial']} | {r['temperature']} | {r['repeat']} | "
+            f"{r['prompt_tokens'] if r['prompt_tokens'] is not None else '-'} | "
+            f"{r['completion_tokens'] if r['completion_tokens'] is not None else '-'} | "
+            f"{r['elapsed_s']} | {r['tokens_per_sec'] if r['tokens_per_sec'] is not None else '-'} |"
+        )
+    lines.append("")
+    lines.append("## Full Responses")
+    for r in results:
+        lines.append("")
+        lines.append(f"### Trial {r['trial']} — temperature={r['temperature']}, repeat={r['repeat']}")
+        lines.append("")
+        lines.append("```")
+        lines.append(r["response"])
+        lines.append("```")
+    return "\n".join(lines) + "\n"
+
+
+def _cmd_experiment(args: str, state: dict) -> str:
+    import agent as agent_mod
+    import config
+    from datetime import datetime, timezone
+
+    prompt_text = args.strip()
+    if not prompt_text:
+        try:
+            prompt_text = input("  Prompt to test: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return "Cancelled."
+        if not prompt_text:
+            return "Usage: /experiment <prompt text>  (or /experiment with no args to be prompted)"
+
+    try:
+        temps_raw = input(
+            "  Temperature values (comma-separated, e.g. 0.2,0.5,0.8,1.0): "
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
+        return "Cancelled."
+    if not temps_raw:
+        return "Cancelled — no temperature values given."
+
+    temperatures: list = []
+    for part in temps_raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            t = float(part)
+        except ValueError:
+            return f"Invalid temperature value: '{part}'"
+        if not (0.0 <= t <= 2.0):
+            return f"Temperature must be between 0.0 and 2.0 (got {t})"
+        temperatures.append(t)
+    if not temperatures:
+        return "Cancelled — no valid temperature values given."
+
+    try:
+        repeats_raw = input("  Repeats per temperature [1]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return "Cancelled."
+    repeats = 1
+    if repeats_raw:
+        try:
+            repeats = int(repeats_raw)
+        except ValueError:
+            return f"Invalid repeat count: '{repeats_raw}'"
+        if repeats < 1:
+            return "Repeats must be >= 1"
+
+    total_trials = len(temperatures) * repeats
+    print(f"\n  {total_trials} trial(s): {len(temperatures)} temperature value(s) x {repeats} repeat(s)")
+    try:
+        confirm = input("  Proceed? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return "Cancelled."
+    if confirm != "y":
+        return "Cancelled."
+
+    # Fixed params: whatever is currently set via /set, minus temperature (swept below)
+    base_params = dict(state.get("gen_params") or {})
+    base_params.pop("temperature", None)
+
+    # Reuse the current session's system prompt so trials match live behaviour
+    sys_msg = next(
+        (m.get("content") for m in state["messages"]
+         if isinstance(m, dict) and m.get("role") == "system"),
+        config.SYSTEM_PROMPT,
+    )
+
+    client = state["client"]
+    model = state["model"]
+
+    experiment_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    exp_dir = os.path.join(config.WORKSPACE_ROOT, "experiments", experiment_id)
+    os.makedirs(exp_dir, exist_ok=True)
+    results_path = os.path.join(exp_dir, "results.jsonl")
+    report_path = os.path.join(exp_dir, "report.md")
+
+    results: list = []
+    trial_num = 0
+    try:
+        for temp in temperatures:
+            for rep in range(1, repeats + 1):
+                trial_num += 1
+                print(
+                    f"\n\033[2m--- trial {trial_num}/{total_trials}  "
+                    f"temperature={temp}  repeat={rep}/{repeats} ---\033[0m"
+                )
+
+                messages = agent_mod.new_conversation(sys_msg)
+                messages.append({"role": "user", "content": prompt_text})
+
+                gen_params = dict(base_params)
+                gen_params["temperature"] = temp
+
+                t_start = time.monotonic()
+                try:
+                    answer, usage = agent_mod._stream_response(
+                        client, model, messages, gen_params=gen_params
+                    )
+                except Exception as e:
+                    answer = f"ERROR: {e}"
+                    usage = None
+                elapsed = time.monotonic() - t_start
+
+                answer = sanitize_for_file(answer)
+                completion_tok = usage.get("completion_tokens") if usage else None
+                record = {
+                    "trial": trial_num,
+                    "temperature": temp,
+                    "repeat": rep,
+                    "model": model,
+                    "prompt": prompt_text,
+                    "response": answer,
+                    "elapsed_s": round(elapsed, 3),
+                    "prompt_tokens": usage.get("prompt_tokens") if usage else None,
+                    "completion_tokens": completion_tok,
+                    "total_tokens": usage.get("total_tokens") if usage else None,
+                    "tokens_per_sec": (
+                        round(completion_tok / elapsed, 2)
+                        if completion_tok and elapsed > 0 else None
+                    ),
+                    "fixed_params": base_params,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                results.append(record)
+
+                # Append incrementally so partial results survive a crash/interrupt
+                try:
+                    with open(results_path, "a", encoding="utf-8") as f:
+                        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                except Exception:
+                    pass
+    except KeyboardInterrupt:
+        print("\n  [experiment] interrupted — writing partial report...")
+
+    report = _build_experiment_report(
+        prompt_text, model, temperatures, repeats, base_params, results
+    )
+    try:
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(sanitize_for_file(report))
+    except Exception as e:
+        return f"Ran {len(results)}/{total_trials} trial(s) but failed to save report: {e}"
+
+    return (
+        f"\n  Completed {len(results)}/{total_trials} trial(s).\n"
+        f"  Results : {results_path}\n"
+        f"  Report  : {report_path}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Register all commands
 # ---------------------------------------------------------------------------
 
@@ -1288,3 +1494,4 @@ register("/compress",    _cmd_compress,    help="Manually compress conversation 
 register("/exit",        _cmd_exit,        help="Quit the harness")
 register("/quit",        _cmd_exit,        help="Quit the harness (alias for /exit)")
 register("/subagent",    _cmd_subagent,    help="Spawn an isolated subagent for a focused task: /subagent <task>")
+register("/experiment",  _cmd_experiment,  help="Run a prompt across a sweep of temperature values, log each trial, and save a report: /experiment <prompt>")
