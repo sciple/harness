@@ -68,7 +68,7 @@ Protected from writing: main.py, agent.py, config.py, session.py, __init__.py fi
 | /skill name [args] | Run a skill |
 | /newskill desc | Ask LLM to write a new skill |
 | /subagent task | Spawn an isolated subagent for a focused task |
-| /experiment [prompt] | Sweep a prompt across temperature values (with repeats), reset history between trials, save results.jsonl + report.md to workspace/experiments/<timestamp>/ |
+| /experiment [prompt] | Sweep a prompt across temperature values (with repeats), reset history between trials, save results.jsonl + report.md to workspace/experiments/<timestamp>/. Optional tool-calling mode (own confirm-skip toggle) runs agent.chat() per trial and logs the tool_calls trace; note token counts then reflect only the final round of each trial. |
 | /calendar [y] [m] | Show a mini calendar |
 | /time | Show current date/time |
 | /open url | Open URL in browser |

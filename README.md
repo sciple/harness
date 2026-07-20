@@ -204,7 +204,7 @@ Supported parameters: `temperature` (float), `top_p` (float), `max_tokens` (int)
 
 | Command | Description |
 |---|---|
-| `/experiment [prompt]` | Run a prompt across a sweep of temperature values (with a configurable repeat count per value), resetting conversation history between every trial, then save a JSONL log and a Markdown report to `workspace/experiments/<timestamp>/` |
+| `/experiment [prompt]` | Run a prompt across a sweep of temperature values (with a configurable repeat count per value), resetting conversation history between every trial, then save a JSONL log and a Markdown report to `workspace/experiments/<timestamp>/`. Optionally allows tool calls per trial (with its own confirmation-skip toggle) to capture multi-step tool-using prompts. |
 
 ### Utilities
 
@@ -465,7 +465,16 @@ Use subagents for self-contained tasks where you want full tool access but don't
 /experiment Write a haiku about autumn
 Temperature values (comma-separated, e.g. 0.2,0.5,0.8,1.0): 0.2,0.6,1.0
 Repeats per temperature [1]: 3
+Allow tool calls during this experiment? [y/N]
 ```
+
+### Multi-step (tool-calling) trials
+
+If your prompt requires the model to call a tool before answering (e.g. "read this file and summarise it"), answer `y` to "Allow tool calls during this experiment?". This switches each trial from plain-text generation to the full tool-dispatch loop (`agent.chat()`, same as normal conversation), so a trial can call a tool, read the result, and produce a final answer — all still inside that trial's own isolated, freshly-reset conversation.
+
+- You're then asked a second question: "Skip tool confirmation prompts for this experiment run?" — tools marked `confirm: True` (`write_file`, `run_python`, `make_dir`, `fetch_url`, `notes`) normally pause for a `[y/N]` prompt before running. Since a sweep can trigger the same tool many times across trials, you can opt into skipping confirmation for the whole run; the default (`N`) keeps every call interactive. This choice only affects this experiment run — your main session's confirmation behavior is untouched.
+- Each trial's log gains `tool_enabled` and a `tool_calls` list (`name`, `arguments`, `result` per call, in order), and `report.md` shows each tool call and result before the trial's final response.
+- **Token-count caveat**: `prompt_tokens`/`completion_tokens`/`tokens_per_sec` for a tool-calling trial reflect only the *final* LLM call of that trial, not the full multi-round total — `agent.chat()` only reports usage from the round that produced the final answer. This is the same behavior the main REPL's `/ctx` already has; `report.md` calls it out explicitly when tool calls are enabled.
 
 ---
 

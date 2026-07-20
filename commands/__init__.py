@@ -1260,12 +1260,50 @@ def _cmd_subagent(args: str, state: dict) -> str:
 # /experiment — sweep temperature values over a fixed prompt, log + report
 # ---------------------------------------------------------------------------
 
+def _extract_tool_trace(messages: list) -> list:
+    """
+    Walk a trial's isolated message list (built by agent.chat()) and pull out
+    the chronological tool-call trace: each assistant tool call paired with
+    its matching tool-result message, by tool_call_id.
+    """
+    trace: list = []
+    for i, m in enumerate(messages):
+        if not (isinstance(m, dict) and m.get("role") == "assistant" and m.get("tool_calls")):
+            continue
+        results_by_id = {}
+        for later in messages[i + 1:]:
+            if isinstance(later, dict) and later.get("role") == "tool" and later.get("tool_call_id"):
+                results_by_id[later["tool_call_id"]] = later.get("content", "")
+        for tc in m["tool_calls"]:
+            fn = tc.get("function", {})
+            name = fn.get("name", "?")
+            raw_args = fn.get("arguments", "")
+            try:
+                args = json.loads(raw_args)
+            except (json.JSONDecodeError, TypeError):
+                args = raw_args
+            trace.append({
+                "name": name,
+                "arguments": args,
+                "result": results_by_id.get(tc.get("id"), ""),
+            })
+    return trace
+
+
+def _truncate_lines(text: str, max_lines: int = 5) -> str:
+    lines = text.splitlines()
+    if len(lines) <= max_lines:
+        return text
+    return "\n".join(lines[:max_lines]) + "\n..."
+
+
 def _build_experiment_report(
     prompt: str,
     model: str,
     temperatures: list,
     repeats: int,
     base_params: dict,
+    tool_enabled: bool,
     results: list,
 ) -> str:
     from datetime import datetime, timezone
@@ -1278,6 +1316,13 @@ def _build_experiment_report(
     if base_params:
         fixed = ", ".join(f"{k}={v}" for k, v in base_params.items())
         lines.append(f"- Fixed generation params: {fixed}")
+    lines.append(f"- Tool calls: {'enabled' if tool_enabled else 'disabled'}")
+    if tool_enabled:
+        lines.append(
+            "- Note: token counts below reflect only the *final* LLM call of "
+            "each trial (agent.chat()'s usage tracking is last-round-only), "
+            "not the full multi-round total for trials that used tools."
+        )
     lines.append("")
     lines.append("## Prompt")
     lines.append("")
@@ -1287,20 +1332,31 @@ def _build_experiment_report(
     lines.append("")
     lines.append("## Results Summary")
     lines.append("")
-    lines.append("| Trial | Temp | Repeat | Prompt tok | Completion tok | Elapsed (s) | Tok/s |")
-    lines.append("|---|---|---|---|---|---|---|")
+    lines.append("| Trial | Temp | Repeat | Prompt tok | Completion tok | Elapsed (s) | Tok/s | Tool calls |")
+    lines.append("|---|---|---|---|---|---|---|---|")
     for r in results:
         lines.append(
             f"| {r['trial']} | {r['temperature']} | {r['repeat']} | "
             f"{r['prompt_tokens'] if r['prompt_tokens'] is not None else '-'} | "
             f"{r['completion_tokens'] if r['completion_tokens'] is not None else '-'} | "
-            f"{r['elapsed_s']} | {r['tokens_per_sec'] if r['tokens_per_sec'] is not None else '-'} |"
+            f"{r['elapsed_s']} | {r['tokens_per_sec'] if r['tokens_per_sec'] is not None else '-'} | "
+            f"{len(r.get('tool_calls') or [])} |"
         )
     lines.append("")
-    lines.append("## Full Responses")
+    lines.append("## Trial Details")
     for r in results:
         lines.append("")
         lines.append(f"### Trial {r['trial']} — temperature={r['temperature']}, repeat={r['repeat']}")
+        for step in r.get("tool_calls") or []:
+            lines.append("")
+            lines.append(f"**Tool call:** `{step['name']}({step['arguments']})`")
+            lines.append("")
+            lines.append("**Result:**")
+            lines.append("```")
+            lines.append(_truncate_lines(str(step["result"])))
+            lines.append("```")
+        lines.append("")
+        lines.append("**Response:**")
         lines.append("")
         lines.append("```")
         lines.append(r["response"])
@@ -1359,8 +1415,31 @@ def _cmd_experiment(args: str, state: dict) -> str:
         if repeats < 1:
             return "Repeats must be >= 1"
 
+    try:
+        tool_raw = input("  Allow tool calls during this experiment? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return "Cancelled."
+    tool_enabled = tool_raw == "y"
+
+    experiment_skip_confirm = False
+    if tool_enabled:
+        try:
+            skip_raw = input(
+                "  Skip tool confirmation prompts for this experiment run? [y/N] "
+            ).strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return "Cancelled."
+        experiment_skip_confirm = skip_raw == "y"
+
     total_trials = len(temperatures) * repeats
-    print(f"\n  {total_trials} trial(s): {len(temperatures)} temperature value(s) x {repeats} repeat(s)")
+    if tool_enabled:
+        tools_summary = "tools: enabled (skip-confirm)" if experiment_skip_confirm else "tools: enabled"
+    else:
+        tools_summary = "tools: disabled"
+    print(
+        f"\n  {total_trials} trial(s): {len(temperatures)} temperature value(s) x "
+        f"{repeats} repeat(s)  [{tools_summary}]"
+    )
     try:
         confirm = input("  Proceed? [y/N] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
@@ -1405,11 +1484,27 @@ def _cmd_experiment(args: str, state: dict) -> str:
                 gen_params = dict(base_params)
                 gen_params["temperature"] = temp
 
+                tool_trace: list = []
                 t_start = time.monotonic()
                 try:
-                    answer, usage = agent_mod._stream_response(
-                        client, model, messages, gen_params=gen_params
-                    )
+                    if tool_enabled:
+                        trial_state = dict(state)
+                        trial_state["skip_confirm"] = experiment_skip_confirm
+                        trial_usage: dict = {}
+                        answer = agent_mod.chat(
+                            client, model, messages,
+                            verbose=True,
+                            usage_out=trial_usage,
+                            gen_params=gen_params,
+                            context_length=None,
+                            state=trial_state,
+                        )
+                        usage = trial_usage or None
+                        tool_trace = _extract_tool_trace(messages[2:])
+                    else:
+                        answer, usage = agent_mod._stream_response(
+                            client, model, messages, gen_params=gen_params
+                        )
                 except Exception as e:
                     answer = f"ERROR: {e}"
                     usage = None
@@ -1433,6 +1528,8 @@ def _cmd_experiment(args: str, state: dict) -> str:
                         if completion_tok and elapsed > 0 else None
                     ),
                     "fixed_params": base_params,
+                    "tool_enabled": tool_enabled,
+                    "tool_calls": tool_trace,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
                 results.append(record)
@@ -1447,7 +1544,7 @@ def _cmd_experiment(args: str, state: dict) -> str:
         print("\n  [experiment] interrupted — writing partial report...")
 
     report = _build_experiment_report(
-        prompt_text, model, temperatures, repeats, base_params, results
+        prompt_text, model, temperatures, repeats, base_params, tool_enabled, results
     )
     try:
         with open(report_path, "w", encoding="utf-8") as f:
